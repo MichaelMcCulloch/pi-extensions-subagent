@@ -21,19 +21,23 @@ function fixture(shared?: SubagentStore, agent = 'r') {
   };
   const createAgentSession = vi.fn(async (_options: unknown) => ({session}));
   const loaderOptions: unknown[] = [];
+  const applyOverrides = vi.fn();
   const sdk = {
-    getAgentDir:() => '/fake-agent-dir',SettingsManager:{create:() => ({})},SessionManager:{inMemory:() => ({getSessionId:() => id})},ModelRuntime:{create:async () => ({})},
+    createMcpExtension: () => 'builtin:mcp', createCodemodeExtension: () => 'builtin:codemode', createToolSearchExtension: () => 'builtin:tool-search',
+    getAgentDir:() => '/fake-agent-dir',SettingsManager:{create:() => ({applyOverrides})},SessionManager:{inMemory:() => ({getSessionId:() => id})},ModelRuntime:{create:async () => ({})},
     DefaultResourceLoader:class {constructor(options: unknown){loaderOptions.push(options);}async reload() {}},createAgentSession,
   } as unknown as typeof import('@earendil-works/pi-coding-agent');
   const runtime = new SubagentRuntime(store,agent,pi,() => ctx,async () => sdk);
-  return {store,runtime,ctx,pi,finish,session,createAgentSession,loaderOptions,id};
+  return {store,runtime,ctx,pi,finish,session,createAgentSession,loaderOptions,id,applyOverrides};
 }
 it('dispatch returns before prompting, binds authority out-of-band, keeps ambient tools and uses parent model',async () => {
   const f = fixture(); const id = f.runtime.dispatch({name:'research',task:'investigate'});
   expect(f.store.state.status[id]).toBe('dispatched'); expect(f.session.prompt).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(f.session.prompt).toHaveBeenCalled());
-  expect(f.createAgentSession.mock.calls[0]![0]).toMatchObject({model:f.ctx.model,tools:['read','bash','board']});
-  expect(f.loaderOptions[0]).toMatchObject({noExtensions:false,additionalExtensionPaths:[expect.stringContaining('/src/index.ts')]});
+  expect(f.createAgentSession.mock.calls[0]![0]).toMatchObject({model:f.ctx.model});
+  expect(f.createAgentSession.mock.calls[0]![0]).not.toHaveProperty('tools');
+  expect(f.applyOverrides).toHaveBeenCalledWith({defaultTools:['read','bash','board']});
+  expect(f.loaderOptions[0]).toMatchObject({noExtensions:false,additionalExtensionPaths:[expect.stringContaining('/src/index.ts')],extensionFactories:['builtin:mcp','builtin:codemode','builtin:tool-search']});
   f.finish(); expect(await f.runtime.wait('research')).toBe('final report');
   expect(f.store.state.terminal[id]).toBe('completed'); expect(f.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({customType:'subagent/result',content:expect.stringContaining('final report')}),{triggerTurn:true});
   expect(authorityBySessionId.has(f.id)).toBe(false);expect(f.session.dispose).toHaveBeenCalled();

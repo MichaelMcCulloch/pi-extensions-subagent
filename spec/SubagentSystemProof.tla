@@ -13,7 +13,7 @@ THEOREM SafetyCore ==
   ASSUME Root \in Agents,
            MaxDepth \in Nat, MaxGen \in Nat, MaxSeq \in Nat,
            NoAgent \notin Agents, NoName \notin Names, NoWorktree \notin Worktrees
-  PROVE Spec => []CoreInv
-  BY InitCore, NextCore, PTL DEF Spec
+  PROVE SafetySpec => []CoreInv
+  BY InitCore, NextCore, PTL DEF SafetySpec
 
 =========================================================================

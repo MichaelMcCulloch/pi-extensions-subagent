@@ -11,6 +11,7 @@ export const SubagentParams = Type.Object({
 });
 export function buildSubagentTool(getRuntime: (ctx: ExtensionContext) => SubagentRuntime): ToolDefinition<typeof SubagentParams> {
   return {
+    namespace: { name: "subagents", description: "Attenuated child-agent lifecycles" },
     name:'subagent',label:'Subagent',description:'Dispatch a named background child using your model. Optionally allocate a git worktree; never merges. Authority defaults to no spawning. Use wait for blocking, cancel to stop, cleanup for settled clean worktrees, and clear to forget.',
     parameters:SubagentParams,executionMode:'sequential',
     async execute(_id, params, signal, _update, ctx) {

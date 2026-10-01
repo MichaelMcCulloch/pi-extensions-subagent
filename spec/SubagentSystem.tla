@@ -364,6 +364,8 @@ SettleAny == \E c \in Agents : Complete(c) \/ Fail(c) \/ Cancel(c)
 CleanupAny == \E c \in Agents : RemoveWorktree(c)
 ReconcileAny == \E c \in Agents : Reconcile(c)
 
+SafetySpec == Init /\ [][Next]_vars
+
 Spec ==
     Init /\ [][Next]_vars
     /\ WF_vars(SettleAny)

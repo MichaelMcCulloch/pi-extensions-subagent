@@ -27,7 +27,7 @@ export interface DispatchInput { name: string; task: string; worktree?: boolean;
 export class SubagentRuntime {
   private children = new Map<string, Child>();
   private closed = false;
-  constructor(public readonly store: SubagentStore, public readonly agent: string, private readonly pi: Pick<ExtensionAPI,'sendMessage'|'getActiveTools'>, private readonly context: () => ExtensionContext, private readonly sdk: () => Promise<SDK> = loadHostSdk) {}
+  constructor(public readonly store: SubagentStore, public readonly agent: string, private readonly pi: Pick<ExtensionAPI,'sendMessage'|'getActiveTools'>, private readonly context: () => ExtensionContext, private readonly sdk: () => Promise<SDK> = loadHostSdk, private readonly extensionPath = resolve(dirname(fileURLToPath(import.meta.url)),'../index.ts')) {}
   private own(name: string, includeDescendants = false): string {
     const s = this.store.state;
     const scope = includeDescendants ? descendants(s,this.store.config,this.agent) : Object.keys(s.status).filter(a => s.parent[a] === this.agent);
@@ -70,14 +70,16 @@ export class SubagentRuntime {
       if (child.cancelled) return;
       const cwd = payload.path ?? ctx.cwd; const agentDir = sdk.getAgentDir();
       const settingsManager = sdk.SettingsManager.create(cwd,agentDir);
-      const resourceLoader = new sdk.DefaultResourceLoader({cwd,agentDir,settingsManager,noExtensions:false,additionalExtensionPaths:[resolve(dirname(fileURLToPath(import.meta.url)),'../index.ts')]});
+      settingsManager.applyOverrides({defaultTools:this.pi.getActiveTools().filter(t => t !== 'subagent' || auth.spawn)});
+      const standalone = resolve(dirname(fileURLToPath(import.meta.url)),'../index.ts');
+      const resourceLoader = new sdk.DefaultResourceLoader({cwd,agentDir,settingsManager,noExtensions:this.extensionPath !== standalone,additionalExtensionPaths:[this.extensionPath],extensionFactories:[sdk.createMcpExtension(),sdk.createCodemodeExtension({mode:'on'}),sdk.createToolSearchExtension()]});
       await resourceLoader.reload();
       const sessionManager = sdk.SessionManager.inMemory(cwd);
       id = sessionManager.getSessionId();
       authorityBySessionId.set(id,auth); bindingBySessionId.set(id,{store:this.store,agent:c});
       const modelRuntime = await sdk.ModelRuntime.create({authPath:resolve(agentDir,'auth.json'),modelsPath:resolve(agentDir,'models.json')});
       if (child.cancelled) return;
-      const {session} = await sdk.createAgentSession({cwd,agentDir,modelRuntime,model:ctx.model!,resourceLoader,sessionManager,settingsManager,tools:this.pi.getActiveTools().filter(t => t !== 'subagent' || auth.spawn),...(ctx.thinkingLevel ? {thinkingLevel:ctx.thinkingLevel} : {})});
+      const {session} = await sdk.createAgentSession({cwd,agentDir,modelRuntime,model:ctx.model!,resourceLoader,sessionManager,settingsManager,...(ctx.thinkingLevel ? {thinkingLevel:ctx.thinkingLevel} : {})});
       child.session = session;
       await session.bindExtensions({});
       if (child.cancelled) return;

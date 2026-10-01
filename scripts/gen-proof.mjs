@@ -134,7 +134,7 @@ for (const [name, title, actionDefs] of CASES) {
 }
 lines = ["---------------- MODULE SubagentSystemProof ----------------", "\\* Generated; the driver checks every imported proof module before this assembly.", `EXTENDS ${modules.join(", ")}`, ""];
 theorem("NextCore", "CoreInv /\\ [Next]_vars => CoreInv'", `BY ${CASES.map(c => c[0]).join(", ")} DEF Next, vars`);
-theorem("SafetyCore", "Spec => []CoreInv", "BY InitCore, NextCore, PTL DEF Spec");
+theorem("SafetyCore", "SafetySpec => []CoreInv", "BY InitCore, NextCore, PTL DEF SafetySpec");
 push("=========================================================================");
 push();
 const output = process.argv[2] ?? "spec/SubagentSystemProof.tla";

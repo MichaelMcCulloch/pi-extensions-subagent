@@ -21,7 +21,7 @@ export function latestSnapshot(ctx: ExtensionContext): SubagentState | null {
 }
 
 /** Default export consumed by pi. */
-export default function subagentExtension(pi: ExtensionAPI): void {
+export default function subagentExtension(pi: ExtensionAPI, options: { extensionPath?: string } = {}): void {
   let runtime: SubagentRuntime | undefined; let context: ExtensionContext | undefined;
   let widgetTui: TUI | null = null; let widgetInstalled = false;
   let detachPersistence: () => void = () => {};
@@ -70,7 +70,7 @@ export default function subagentExtension(pi: ExtensionAPI): void {
     const id = ctx.sessionManager.getSessionId(); const binding = bindingBySessionId.get(id);
     const authority = authorityBySessionId.get(id) ?? {spawn:true,grant:true};
     const store = binding?.store ?? new SubagentStore({append:state => {if (attached) {pi.appendEntry(SUBAGENT_STATE_ENTRY,state); refreshWidget();}}},snapshot ?? initSubagentState());
-    runtime = new SubagentRuntime(store,binding?.agent ?? store.config.root,pi,() => context!);
+    runtime = new SubagentRuntime(store,binding?.agent ?? store.config.root,pi,() => context!,undefined,options.extensionPath);
     if (!binding) store.recover();
     pi.setActiveTools(authority.spawn ? [...new Set([...pi.getActiveTools(),'subagent'])] : pi.getActiveTools().filter(t => t !== 'subagent'));
     refreshWidget();
