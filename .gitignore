@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+spec/vendor/
+spec/generated/
+spec/states/
+spec/*.log
+spec/*_TTrace_*.tla
+spec/*_TTrace_*.bin
+
+# TLAPS proof cache
+spec/.tlacache/
+spec/*.thy
+
+# Worktrees allocated by the extension at runtime.
+.worktrees/
