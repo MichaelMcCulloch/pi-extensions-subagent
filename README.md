@@ -92,7 +92,8 @@ checks every core/view invariant in every state. Equal counts are a drift
 check, not a proof that two arbitrary transition systems are equivalent.
 
 TLAPS proves parameterized inductive safety, `Spec => []CoreInv`, under explicit
-constant assumptions: **1,511 obligations proved**. Generated per-action proof
+constant assumptions: **1,511 obligations proved**, recorded per module in
+`spec/.tlaps-obligation-count.json`. Generated per-action proof
 modules are checked individually before the temporal assembly. Recursive views and liveness are
 TLC checks, not TLAPS claims. Regenerate all proofs with:
 
@@ -103,7 +104,9 @@ node scripts/tlapm.mjs
 
 Trace validation drives the production store through **256 traces covering all
 13 actions**, then TLC replays their guards, transitions, and complete abstract
-states: **10,496 distinct replay states**. Tests also exercise persistence,
+states: **10,496 distinct trace states** (the count includes the trace index;
+the emitted data contains **3,053 distinct abstract states**). Both numbers are
+recorded in `spec/.trace-state-count.json`. Tests also exercise persistence,
 authority binding, asynchronous dispatch, shutdown, tool refusals, projection,
 and real Git worktrees. SDK lifecycle tests use a fake session; verification
 does not call a paid model or prove SDK, Git, filesystem, or model behavior.
@@ -119,7 +122,8 @@ Java 11+, TLAPS, and its prover backends are required. TLC's pinned jar is
 cached in `spec/vendor`; the driver downloads it if absent. `TLAPM`,
 `TLAPM_LIBRARY`, `TLA2TOOLS_JAR`, `JAVA`, and `TLA_JVM_MEMORY` override discovery.
 The TLAPS driver uses SMT(v2), selected with `--debug oldsmt`, plus narrowly
-scoped Isabelle lemmas. `.tlc-state-count.json` is tracked and refreshed by TLC.
+scoped Isabelle lemmas. `.tlc-state-count.json`, `.trace-state-count.json`, and
+`.tlaps-obligation-count.json` are tracked and refreshed by their drivers.
 
 ## Scope and layout
 

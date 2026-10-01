@@ -103,16 +103,47 @@ function checkModel(java, jar) {
   return count;
 }
 
-function runTlc(java, jar, module, config) {
-  const args = tlcArgs(jar, module, config);
-  process.stdout.write(`\n$ (cd spec && ${java} ${args.join(" ")})\n`);
-  const result = spawnSync(java, args, { cwd: specDir, stdio: "inherit" });
-  if (result.status !== 0) throw new Error(`TLC failed for ${module} (exit ${result.status ?? "signal"})`);
+/** Run a command, echo its combined output, and return it. */
+function runCommandCaptured(commandName, args) {
+  const result = spawnSync(commandName, args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  process.stdout.write(output);
+  if (result.status !== 0) throw new Error(`${commandName} ${args.join(" ")} failed`);
+  return output;
 }
 
-function runCommand(commandName, args) {
-  const result = spawnSync(commandName, args, { cwd: root, stdio: "inherit" });
-  if (result.status !== 0) throw new Error(`${commandName} ${args.join(" ")} failed`);
+/** Regenerate the production traces, replay them in TLC, and record the counts. */
+function checkTraces(java, jar) {
+  const emitted = runCommandCaptured(resolve(root, "node_modules/.bin/tsx"), ["scripts/emit-traces.ts"]);
+  const summary = emitted.match(/trace-summary: traces=(\d+) actions=(\d+) abstractStates=(\d+)/);
+  if (!summary) throw new Error("trace emitter did not report a trace-summary line");
+
+  const args = tlcArgs(jar, "TraceValidation.tla", "TraceValidation.cfg");
+  process.stdout.write(`\n$ (cd spec && ${java} ${args.join(" ")})\n`);
+  const result = spawnSync(java, args, { cwd: specDir, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  process.stdout.write(output);
+  if (result.status !== 0) throw new Error(`TLC failed for trace validation (exit ${result.status ?? "signal"})`);
+  const replay = output.match(/([\d,]+)\s+states generated,\s*([\d,]+)\s+distinct states found/);
+  if (!replay) throw new Error("trace validation did not report a distinct-state count");
+
+  writeFileSync(
+    resolve(specDir, ".trace-state-count.json"),
+    JSON.stringify(
+      {
+        traces: Number(summary[1]),
+        actions: Number(summary[2]),
+        abstractStates: Number(summary[3]),
+        replayStates: Number(replay[2].replaceAll(",", "")),
+        version: TLA_VERSION,
+      },
+      null,
+      2,
+    ),
+  );
+  process.stdout.write(
+    `\ntrace validation passed: ${summary[1]} traces, ${summary[2]} actions, ${summary[3]} abstract states, ${replay[2]} distinct replay states\n`,
+  );
 }
 
 async function main() {
@@ -123,9 +154,7 @@ async function main() {
     checkModel(java, jar);
   }
   if (command === "traces" || command === "all") {
-    runCommand(resolve(root, "node_modules/.bin/tsx"), ["scripts/emit-traces.ts"]);
-    runTlc(java, jar, "TraceValidation.tla", "TraceValidation.cfg");
-    process.stdout.write("trace validation passed\n");
+    checkTraces(java, jar);
   }
   if (!["model", "traces", "all"].includes(command)) {
     throw new Error(`unknown command ${command}; expected model, traces, or all`);

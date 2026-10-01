@@ -31,4 +31,5 @@ function tla(value: unknown): string {
 }
 mkdirSync('spec/generated',{recursive:true});
 writeFileSync('spec/generated/TracesData.tla',`---- MODULE TracesData ----\nEXTENDS Naturals\nTraces == ${tla(traces)}\n====\n`);
-console.log(`Emitted ${traces.length} production-store traces; all ${coverage.size} actions covered.`);
+const distinctAbstractStates = new Set(traces.flat().map(step => JSON.stringify(step.state))).size;
+console.log(`trace-summary: traces=${traces.length} actions=${coverage.size} abstractStates=${distinctAbstractStates}`);

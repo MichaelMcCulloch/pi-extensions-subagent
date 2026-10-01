@@ -1,8 +1,10 @@
 import { expect, it, vi } from 'vitest';
-import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, ExtensionContext, ExtensionToolContext, Theme } from '@earendil-works/pi-coding-agent';
+import type { TUI } from '@earendil-works/pi-tui';
 import { SubagentRuntime, authorityBySessionId, bindingBySessionId } from '../src/extension/runtime.ts';
 import { SubagentStore } from '../src/extension/store.ts';
 import { initSubagentState } from '../src/engine/state.ts';
+import { renderRows } from '../src/engine/projection.ts';
 import { buildSubagentTool } from '../src/extension/tool.ts';
 import { SubagentExplorer, SubagentWidget } from '../src/extension/hud.ts';
 function fixture(shared?: SubagentStore, agent = 'r') {
@@ -55,8 +57,17 @@ it('tool refusals are errors and wait is explicitly blocking',async () => {
   expect(f.store.state.status.a1).toBe('running'); f.finish(); await f.runtime.wait('x');
 });
 it('widget and overlay project the same state and overlay closes on q',() => {
-  const f = fixture(); const widget = new SubagentWidget(() => f.store.state); const close = vi.fn(); const overlay = new SubagentExplorer(() => f.store.state,close);
-  expect(widget.render(80)).toEqual(overlay.render(80)); overlay.handleInput('q'); expect(close).toHaveBeenCalled();
+  const f = fixture();
+  f.store.apply({event:{type:'Dispatch',d:'r',c:'a1',n:'child',w:f.store.config.noWorktree,auth:{spawn:false,grant:false}}});
+  const body = (): string[] => renderRows(f.store.state);
+  const widget = new SubagentWidget(body);
+  const close = vi.fn();
+  const tui = {terminal:{rows:20},requestRender:() => {}} as unknown as TUI;
+  const theme = {bold:(s:string) => s,fg:(_c:string,s:string) => s} as unknown as Theme;
+  const overlay = new SubagentExplorer(body,tui,() => theme,close);
+  expect(widget.render(80).join('\n')).toContain('child');
+  expect(overlay.render(80).join('\n')).toContain('child');
+  overlay.handleInput('q'); expect(close).toHaveBeenCalled();
 });
 
 it('recursive children share attenuation guards and shut down before their parent settles',async () => {

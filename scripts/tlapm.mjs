@@ -18,7 +18,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,15 +62,19 @@ function main() {
   args.push("--strict", "--debug", "oldsmt");
   const proofs = readdirSync(specDir).filter(name => /^Subagent.*Proof\.tla$/.test(name) && name !== PROOF).sort();
   let failed = false;
+  const perModule = [];
   for (const proof of [...proofs, PROOF]) {
     const proofArgs = [...args, proof];
 
     process.stdout.write(`\n$ (cd spec && ${tlapm} ${proofArgs.join(" ")})\n`);
     const result = spawnSync(tlapm, proofArgs, {
       cwd: specDir,
-      stdio: "inherit",
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
       env: { ...process.env, PATH: `${dirname(tlapm)}${delimiter}${process.env.PATH ?? ""}` },
     });
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    process.stdout.write(output);
     if (result.error) {
       process.stderr.write(
         `\nTLAPS not available (${result.error.message}).\n` +
@@ -82,10 +86,31 @@ function main() {
     if (result.status !== 0) {
       process.stderr.write(`\ninductive proof failed (tlapm exit ${result.status ?? "signal"})\n`);
       failed = true;
+      continue;
     }
+    const proved = output.match(/All (\d+) obligations proved/);
+    if (!proved) {
+      process.stderr.write(`\nno obligation count reported for ${proof}\n`);
+      failed = true;
+      continue;
+    }
+    perModule.push({ module: proof, obligations: Number(proved[1]) });
   }
   if (failed) process.exit(1);
-  process.stdout.write("inductive proof passed: Spec => []CoreInv for all constants\n");
+  const obligations = perModule.reduce((sum, entry) => sum + entry.obligations, 0);
+  writeFileSync(
+    resolve(specDir, ".tlaps-obligation-count.json"),
+    JSON.stringify(
+      {
+        obligations,
+        modules: perModule.length,
+        perModule: Object.fromEntries(perModule.map(({module, obligations: count}) => [module, count])),
+      },
+      null,
+      2,
+    ),
+  );
+  process.stdout.write(`\ninductive proof passed: Spec => []CoreInv for all constants (${obligations} obligations in ${perModule.length} modules)\n`);
 }
 
 main();

@@ -1,0 +1,22 @@
+{
+  "obligations": 1511,
+  "modules": 16,
+  "perModule": {
+    "SubagentAddWorktreeCoreProof.tla": 99,
+    "SubagentAdmitCoreProof.tla": 99,
+    "SubagentCancelCoreProof.tla": 99,
+    "SubagentClearCoreProof.tla": 122,
+    "SubagentCompleteCoreProof.tla": 99,
+    "SubagentDispatchCoreProof.tla": 122,
+    "SubagentFailCoreProof.tla": 99,
+    "SubagentInitProof.tla": 55,
+    "SubagentPiCrashCoreProof.tla": 104,
+    "SubagentProbeWorktreeCoreProof.tla": 99,
+    "SubagentReconcileCoreProof.tla": 99,
+    "SubagentRemoveWorktreeCoreProof.tla": 99,
+    "SubagentUnchangedCoreProof.tla": 99,
+    "SubagentWorktreeFoundCoreProof.tla": 99,
+    "SubagentWorktreeLostCoreProof.tla": 99,
+    "SubagentSystemProof.tla": 19
+  }
+}
