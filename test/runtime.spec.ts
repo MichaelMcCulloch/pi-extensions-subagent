@@ -13,10 +13,16 @@ function fixture(shared?: SubagentStore, agent = 'r') {
   const id = crypto.randomUUID(); const ctx = {cwd:process.cwd(),model:{id:'same-parent-model'},sessionManager:{getSessionId:() => 'parent'}} as unknown as ExtensionToolContext;
   const sendMessage = vi.fn(); const pi = {sendMessage,getActiveTools:() => ['read','bash','subagent','board']};
   let listener: (e: unknown) => void = () => {};
+  const steering: string[] = []; const followUp: string[] = [];
   const session = {
     bindExtensions:vi.fn(async () => {expect(authorityBySessionId.has(id)).toBe(true);expect(bindingBySessionId.get(id)?.store).toBe(store);}),
     subscribe:vi.fn((fn: typeof listener) => {listener=fn;return () => {};}),
     prompt:vi.fn(async () => {await pending; listener({type:'message_end',message:{role:'assistant',content:[{type:'text',text:'final report'}],stopReason:'stop'}});}),
+    steer:vi.fn(async (text: string) => {steering.push(text);return 'queued' as const;}),
+    followUp:vi.fn(async (text: string) => {followUp.push(text);return 'queued' as const;}),
+    getSteeringMessages:() => steering,
+    getFollowUpMessages:() => followUp,
+    clearQueue:vi.fn(() => {const drained={steering:[...steering],followUp:[...followUp]};steering.length=0;followUp.length=0;return drained;}),
     abort:vi.fn(async () => {finish();}),dispose:vi.fn(),extensionRunner:{emit:vi.fn(async () => {})},
   };
   const createAgentSession = vi.fn(async (_options: unknown) => ({session}));
@@ -28,7 +34,7 @@ function fixture(shared?: SubagentStore, agent = 'r') {
     DefaultResourceLoader:class {constructor(options: unknown){loaderOptions.push(options);}async reload() {}},createAgentSession,
   } as unknown as typeof import('@earendil-works/pi-coding-agent');
   const runtime = new SubagentRuntime(store,agent,pi,() => ctx,async () => sdk);
-  return {store,runtime,ctx,pi,finish,session,createAgentSession,loaderOptions,id,applyOverrides};
+  return {store,runtime,ctx,pi,finish,session,createAgentSession,loaderOptions,id,applyOverrides,steering,followUp};
 }
 it('dispatch returns before prompting, binds authority out-of-band, keeps ambient tools and uses parent model',async () => {
   const f = fixture(); const id = f.runtime.dispatch({name:'research',task:'investigate'});
@@ -107,4 +113,38 @@ it('lets an owning coordinator suppress child completion interrupts',async()=>{
   f.finish();await f.runtime.wait('quiet-worker');
   expect(f.store.state.terminal[id]).toBe('completed');
   expect(f.pi.sendMessage).not.toHaveBeenCalled();
+});
+
+it('exposes coordinator start, steer, queue, clear and stop semantics',async()=>{
+  const f=fixture(); const tool=buildSubagentTool(()=>f.runtime);
+  expect((await tool.execute('start',{action:'start',name:'worker',brief:'work'},undefined,undefined,f.ctx)).structuredContent).toMatchObject({action:'start'});
+  await vi.waitFor(()=>expect(f.session.prompt).toHaveBeenCalled());
+  const steered=await tool.execute('s',{action:'steer',name:'worker',message:'focus'},undefined,undefined,f.ctx);
+  expect((steered.structuredContent as {result:string}).result).toBe('steer: 1 steering, 0 follow-up pending.');
+  const queued=await tool.execute('q',{action:'queue',name:'worker',message:'then summarize'},undefined,undefined,f.ctx);
+  expect((queued.structuredContent as {result:string}).result).toBe('queue: 1 steering, 1 follow-up pending.');
+  expect(f.steering).toEqual(['focus']); expect(f.followUp).toEqual(['then summarize']);
+  const drained=await tool.execute('c',{action:'clear',name:'worker'},undefined,undefined,f.ctx);
+  expect((drained.structuredContent as {result:string}).result).toBe('Cleared 1 steering and 1 follow-up messages.');
+  expect(f.steering).toEqual([]); expect(f.followUp).toEqual([]);
+  await tool.execute('x',{action:'stop',name:'worker'},undefined,undefined,f.ctx);
+  expect(f.store.state.terminal.a1).toBe('cancelled');
+});
+it('resumes a settled child in place and refuses transitions the lifecycle forbids',async()=>{
+  const f=fixture(); const tool=buildSubagentTool(()=>f.runtime);
+  await tool.execute('d',{action:'dispatch',name:'worker',task:'first pass'},undefined,undefined,f.ctx);
+  await vi.waitFor(()=>expect(f.session.prompt).toHaveBeenCalled());
+  await expect(tool.execute('r',{action:'resume',name:'worker'},undefined,undefined,f.ctx)).rejects.toThrow('subagent-resume-not-enabled');
+  f.finish(); await f.runtime.wait('worker');
+  await expect(tool.execute('s',{action:'steer',name:'worker',message:'too late'},undefined,undefined,f.ctx)).rejects.toThrow('subagent-not-running');
+  await tool.execute('r',{action:'resume',name:'worker'},undefined,undefined,f.ctx);
+  expect(f.store.state.status.a1).toBe('dispatched'); expect(f.store.state.seq.a1).toBe(1);
+  expect(f.store.state.payload.a1?.task).toBe('first pass');
+  f.finish(); await f.runtime.wait('worker');
+  await tool.execute('c',{action:'clear',name:'worker'},undefined,undefined,f.ctx);
+  expect(f.store.state.status.a1).toBe('absent');
+  const g=fixture();
+  g.store.apply({event:{type:'Dispatch',d:'r',c:'a1',n:'wt',w:'/tmp/subagent-resume-worktree',auth:{spawn:false,grant:false}}});
+  g.store.apply({event:{type:'AddWorktree',c:'a1'}}); g.store.apply({event:{type:'Admit',c:'a1'}}); g.store.apply({event:{type:'Complete',c:'a1'}});
+  expect(()=>g.runtime.resume({name:'wt'})).toThrow('subagent-resume-worktree');
 });

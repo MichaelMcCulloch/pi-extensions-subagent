@@ -44,6 +44,12 @@
 \*   Reconcile(c)          a restored live child had no session
 \*   Clear(c)              forget a settled, quiescent child record
 \*
+\* The coordinator tool vocabulary maps onto this machine: start = Dispatch,
+\* stop = Cancel, resume = Clear then Dispatch into one slot, and clear =
+\* Clear for a settled record. Steer and queue deliver SDK session messages to
+\* a running child and have no durable transition; payload never enters a
+\* guard.
+\*
 \* The executable mirror is `src/formal/model.ts`; `test/model.spec.ts` asserts
 \* the reachable-set size equals the number TLC reports, and
 \* `spec/TraceValidation.tla` replays real store traces.

@@ -44,6 +44,11 @@ export class SubagentRuntime {
     const s = this.store.state; const m = this.store.config;
     const c = m.agents.find(a => a !== m.root && s.status[a] === 'absent');
     if (!c) throw new SubagentStateError('subagent-capacity','all 128 slots are occupied');
+    return this.place(c,input,borrowed);
+  }
+  /** Dispatch into a chosen slot once the caller has validated exclusivity. */
+  private place(c: string, input: DispatchInput, borrowed?: BorrowedWorkspace): string {
+    const ctx = this.context(); const s = this.store.state; const m = this.store.config;
     const auth = {spawn:input.spawn ?? false,grant:input.grant ?? false};
     if (!s.authority[this.agent]?.spawn || !attenuates(s.authority[this.agent]!,auth)) throw new SubagentStateError('subagent-authority','requested authority cannot be granted');
     const generation = `${ctx.sessionManager.getSessionId()}-${s.nextSeq}`;
@@ -130,6 +135,49 @@ export class SubagentRuntime {
     const c = this.own(name); const child = this.children.get(c);
     if (child) { child.cancelled = true; await child.session?.abort(); await child.done; }
     else this.store.apply({event:{type:'Cancel',c}});
+  }
+  /** The admitted session of a direct child, or a stable refusal. */
+  private sessionOf(name: string): AgentSession {
+    const c = this.own(name); const child = this.children.get(c);
+    if (!child || child.cancelled || !child.session || this.store.state.status[c] !== 'running') throw new SubagentStateError('subagent-not-running',`${name} has no running session`);
+    return child.session;
+  }
+  /** Queue mid-run guidance; it is delivered after the current assistant turn. */
+  async steer(name: string, message: string): Promise<{ steering: number; followUp: number }> {
+    if (!message.trim()) throw new SubagentStateError('subagent-missing-message','a steering message is required');
+    const session = this.sessionOf(name);
+    await session.steer(message);
+    return {steering:session.getSteeringMessages().length,followUp:session.getFollowUpMessages().length};
+  }
+  /** Queue follow-up work; it is delivered when the child would otherwise stop. */
+  async queue(name: string, message: string): Promise<{ steering: number; followUp: number }> {
+    if (!message.trim()) throw new SubagentStateError('subagent-missing-message','a queued message is required');
+    const session = this.sessionOf(name);
+    await session.followUp(message);
+    return {steering:session.getSteeringMessages().length,followUp:session.getFollowUpMessages().length};
+  }
+  /** Drain a running child's queues, or forget a settled, quiescent record. */
+  clear(name: string): { steering: string[]; followUp: string[] } {
+    const c = this.own(name,true); const s = this.store.state;
+    if (s.status[c] === 'running') {
+      const child = this.children.get(c);
+      if (!child?.session || child.cancelled) throw new SubagentStateError('subagent-not-running',`${name} has no running session`);
+      return child.session.clearQueue();
+    }
+    if (s.status[c] !== 'settled') throw new SubagentStateError('subagent-clear-not-enabled','child must be running or settled');
+    this.store.apply({event:{type:'Clear',c}});
+    return {steering:[],followUp:[]};
+  }
+  /** Restart a settled child in place: Clear then Dispatch into the same slot. */
+  resume(input: { name: string; task?: string; worktree?: boolean; spawn?: boolean; grant?: boolean }): string {
+    if (this.closed) throw new SubagentStateError('subagent-session-closed','dispatcher stopped');
+    const c = this.own(input.name); const s = this.store.state;
+    if (s.status[c] !== 'settled') throw new SubagentStateError('subagent-resume-not-enabled','child must be settled to resume');
+    if (s.wtState[c] !== 'none' && s.wtState[c] !== 'removed') throw new SubagentStateError('subagent-resume-worktree','clean up the settled worktree before resuming');
+    const task = (input.task ?? this.store.state.payload[c]?.task ?? '').trim();
+    if (!task) throw new SubagentStateError('subagent-missing-task','task or brief is required to resume a child without a recorded task');
+    this.store.apply({event:{type:'Clear',c}});
+    return this.place(c,{name:input.name,task,...(input.worktree === undefined ? {} : {worktree:input.worktree}),...(input.spawn === undefined ? {} : {spawn:input.spawn}),...(input.grant === undefined ? {} : {grant:input.grant})});
   }
   cleanup(name: string, clear = false): void {
     const c = this.own(name,true); const s = this.store.state; const p = s.payload[c];

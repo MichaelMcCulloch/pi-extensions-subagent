@@ -21,25 +21,37 @@ npx --yes pnpm@10 run verify
 Examples of tool arguments:
 
 ```json
-{"action":"dispatch","name":"review","task":"Review the parser changes"}
-{"action":"dispatch","name":"implement","task":"Implement the parser fix","worktree":true}
-{"action":"dispatch","name":"coordinator","task":"Divide the investigation","spawn":true,"grant":true}
+{"action":"start","name":"review","task":"Review the parser changes"}
+{"action":"steer","name":"review","message":"Also check the error path"}
+{"action":"queue","name":"review","message":"Summarize findings last"}
+{"action":"clear","name":"review"}
+{"action":"stop","name":"review"}
+{"action":"resume","name":"review","task":"Apply the requested fix"}
+{"action":"start","name":"implement","task":"Implement the parser fix","worktree":true}
+{"action":"start","name":"coordinator","task":"Divide the investigation","spawn":true,"grant":true}
 {"action":"list"}
 {"action":"wait","name":"review"}
-{"action":"cancel","name":"implement"}
 {"action":"cleanup","name":"implement","clear":true}
 ```
 
-The one tool is `subagent`. `dispatch` requires `name` and `task` (or `brief`).
-`status` optionally accepts a name and includes its saved result. `wait` blocks
-until that child finishes; interrupting the wait leaves the child running.
-`cancel` stops a child and shuts down its descendants. `cleanup` removes a
-settled, clean worktree; `clear: true` also forgets the record. The separate
-`clear` action forgets a settled record only when its worktree and child records
-are already gone. Ancestors can inspect and clean up settled descendants by name;
-clear descendants before their parent. `wait` and `cancel` target direct children
-(cancellation cascades through their sessions). Refusals throw stable
-`subagent-*` errors.
+The one tool is `subagent`, exposing the coordinator verbs `start`, `stop`,
+`resume`, `clear`, `steer` and `queue`. `start` (alias `dispatch`) requires
+`name` and `task` (or `brief`) and records the dispatch before asynchronous
+setup; it is the same verified `Dispatch`. `stop` (alias `cancel`) stops a child
+and shuts down its descendants. `steer` queues mid-run guidance delivered after
+the current assistant turn; `queue` queues follow-up work delivered when the
+child would otherwise stop. Both target an admitted, running child. `clear`
+drains a running child's pending messages and returns the removed text; on a
+settled child it forgets the record only when its worktree and child records are
+already gone. `resume` restarts a settled child in the same slot, reusing its
+recorded task when no new `task` is supplied; a declared or created worktree must
+be cleaned up first. `status` optionally accepts a name and includes its saved
+result. `wait` blocks until that child finishes; interrupting the wait leaves the
+child running. `cleanup` removes a settled, clean worktree; `clear: true` also
+forgets the record. Ancestors can inspect, clear and clean up settled
+descendants by name; clear descendants before their parent. `wait`, `cancel`,
+`steer`, `queue` and `resume` target direct children (cancellation cascades
+through their sessions). Refusals throw stable `subagent-*` errors.
 
 The widget sits above the editor; `/subagent` opens the tree inspector. Rows
 are ordered by ascending dispatch sequence, indented by depth, and use the

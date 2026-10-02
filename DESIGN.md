@@ -78,6 +78,32 @@ the model records removal only after Git succeeds. Allocation, Git commits,
 SDK streams, and result delivery are trusted environment effects, outside the
 parameterized state-machine proof.
 
+## Coordinator controls
+
+The tool surface exposes the coordinator vocabulary `start`, `stop`, `resume`,
+`clear`, `steer` and `queue`. They are adapter operations over the verified
+machine, not new transitions:
+
+- `start` and `stop` are the modeled `Dispatch` and `Cancel`.
+- `steer` and `queue` deliver an SDK steering or follow-up message to an
+  admitted running child. They change no durable state, so their only guard is
+  `status = "running"` with a live session. This matches the rule that payload
+  and stream delivery never enter the machine.
+- `clear` drains a running child's pending steer and follow-up queues and
+  returns the removed texts. For a settled descendant it is the modeled
+  `Clear`, still guarded by an idle effect, a removed worktree and absent
+  children.
+- `resume` is the modeled composite `Clear; Dispatch` into the same slot,
+  reusing the recorded task when none is supplied. A declared or created
+  worktree must be cleaned first, so the `Dispatch` name and worktree guards
+  hold. `Clear` resets the slot generation, which is safe because it is only
+  enabled on a settled, quiescent record: no live effect can be aliased.
+
+The TLA+ machine, exhaustive mirror and traces therefore keep their existing
+action alphabet and state counts. Tests in `test/runtime.spec.ts` drive the
+verbs against a fake SDK session; delivery itself remains a trusted host
+effect.
+
 ## Validation boundary
 
 TLC checks safety and fairness-based liveness only for the finite fixture.
