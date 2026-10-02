@@ -91,11 +91,14 @@ numbers. The exhaustive TypeScript test reaches the same 360,964 states and
 checks every core/view invariant in every state. Equal counts are a drift
 check, not a proof that two arbitrary transition systems are equivalent.
 
-TLAPS proves parameterized inductive safety, `Spec => []CoreInv`, under explicit
-constant assumptions: **1,511 obligations proved**, recorded per module in
-`spec/.tlaps-obligation-count.json`. Generated per-action proof
-modules are checked individually before the temporal assembly. Recursive views and liveness are
-TLC checks, not TLAPS claims. Regenerate all proofs with:
+TLAPS proves parameterized inductive safety under explicit constant assumptions.
+`SafetyCore` establishes the machine invariant; `SafetyViews` adds ancestor,
+row-totality and cancellation-cascade properties. `SubagentViewProof.tla` uses
+natural induction along bounded parent paths, avoiding recursive proof operators.
+Generated action proofs and the handwritten view proof are checked individually
+before the temporal assembly. Per-module counts are recorded by the proof driver.
+Liveness still depends on fairness and environmental assumptions and is checked
+on TLC fixtures. Regenerate action proofs with:
 
 ```sh
 node scripts/gen-proof.mjs spec/SubagentSystemProof.tla
@@ -147,7 +150,7 @@ as `cancelled`, with the error saved as the report, because the specification's
 
 | Path | Responsibility |
 |---|---|
-| `spec/` | Machine, recursive view, TLC fixtures, generated safety proofs, trace replay |
+| `spec/` | Machine, ancestor-path view, TLC fixtures, generated safety proofs, trace replay |
 | `src/formal/` | Executable machine, guards, invariants |
 | `src/engine/` | Durable payload, commands, projection, diagnostics, Git |
 | `src/extension/` | Store, SDK runtime, tool, widget |
@@ -157,3 +160,10 @@ as `cancelled`, with the error saved as the report, because the specification's
 
 There is no dependency on the board, DAG, monitor, or todo extension. They are
 available to children through ambient extension discovery.
+
+### Pi 1.0 programmatic results
+
+Targets pi 1.0.0 with host SDK packages in peer dependencies. Public tools declare
+an output schema and return structured JSON to codemode while preserving their
+human-readable results. Mutating calls remain sequential and domain refusals
+remain errors. Widgets and overlays use the host TUI APIs, including fullscreen.

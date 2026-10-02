@@ -7,23 +7,22 @@
 \* re-derives lifecycle state from text or from the runtime; the task and the
 \* report are opaque payload and never appear in a guard.
 \*
-\* This module adds the recursive closure of the cancellation cascade and the
-\* definitional presentation properties to `CoreInv`. They are checked by TLC
-\* over every reachable state. It is a separate module because the recursion
-\* (`Descendants`) cannot be elaborated by TLAPS; the inductive proof extends
-\* the recursion-free machine.
+\* Parent paths express ancestor and cancellation views without recursive
+\* proof operators. SubagentViewProof proves them from CoreInv by natural
+\* induction; TLC also checks the concrete fixture.
 \* -------------------------------------------------------------------------
 
-EXTENDS SubagentSystem, FiniteSets, TLC
+EXTENDS SubagentSystem, FiniteSets, Sequences, TLC
 
 \* Every present child, in the root's tree.
 PresentAgents == {a \in Agents : Present(a) /\ ChildOf(a)}
 
 \* The transitive closure of `parent`, at the current state.
-RECURSIVE Descendants(_)
-Descendants(a) ==
-    LET kids == {x \in Agents : Present(x) /\ parent[x] = a}
-    IN kids \cup UNION {Descendants(c) : c \in kids}
+ParentPath(p,n) ==
+  /\ n \in 2..(MaxDepth+1) /\ p \in [1..n -> Agents]
+  /\ \A k \in 1..n-1: Present(p[k]) /\ ChildOf(p[k]) /\ parent[p[k]] = p[k+1]
+Descendants(a) == {x \in Agents: \E n \in 2..(MaxDepth+1): \E p \in [1..n -> Agents]:
+  ParentPath(p,n) /\ p[1] = x /\ p[n] = a}
 
 \* The tool exists exactly for an agent with `spawn` authority. The runtime
 \* enforces the same rule by deactivating the tool before prompting.
@@ -39,11 +38,7 @@ CancelCascade ==
             \A x \in Descendants(a) : status[x] \in {"absent", "settled"}
 
 \* The ancestor chain of an agent, root excluded.
-RECURSIVE Ancestors(_)
-Ancestors(a) ==
-    IF a = Root \/ parent[a] = NoAgent \/ ~Present(a)
-    THEN {}
-    ELSE {parent[a]} \cup Ancestors(parent[a])
+Ancestors(a) == {x \in Agents: a \in Descendants(x)}
 
 \* A live agent's whole ancestor chain is running.
 LiveAncestorsRunning ==

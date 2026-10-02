@@ -55,7 +55,8 @@ it('immediate cancellation fences asynchronous setup and invalid attenuation is 
 it('tool refusals are errors and wait is explicitly blocking',async () => {
   const f = fixture(); const tool = buildSubagentTool(() => f.runtime);
   await expect(tool.execute('id',{action:'dispatch'},undefined,undefined,f.ctx)).rejects.toThrow('subagent-missing-name');
-  await tool.execute('id',{action:'dispatch',name:'x',brief:'work'},undefined,undefined,f.ctx);
+  const dispatched=await tool.execute('id',{action:'dispatch',name:'x',brief:'work'},undefined,undefined,f.ctx);
+  expect(dispatched.structuredContent).toMatchObject({action:'dispatch',agents:[expect.objectContaining({name:'x',generation:1,sequence:0,authority:{spawn:false,grant:false}})]});
   await vi.waitFor(() => expect(f.session.prompt).toHaveBeenCalled());
   const abort = new AbortController(); abort.abort(); await expect(f.runtime.wait('x',abort.signal)).rejects.toThrow('subagent-wait-aborted');
   expect(f.store.state.status.a1).toBe('running'); f.finish(); await f.runtime.wait('x');
@@ -87,4 +88,15 @@ it('recursive children share attenuation guards and shut down before their paren
   expect(parent.store.state.terminal[grandchild]).toBe('cancelled');
   parent.runtime.cleanup('grandchild',true); parent.runtime.cleanup('child',true);
   expect(parent.runtime.visibleAgents()).toEqual([]);
+});
+
+it('borrows a DAG workspace and report tool without claiming owned-worktree cleanup',async () => {
+  const f=fixture(); const reportFactory=() => {};
+  expect(() => f.runtime.dispatch({name:'invalid',task:'work',worktree:true},{cwd:'/borrowed'})).toThrow('borrowed');
+  const id=f.runtime.dispatch({name:'dag-worker',task:'commit then report'},{cwd:'/borrowed',activeTools:['dag_report'],extensionFactories:[reportFactory]});
+  await vi.waitFor(() => expect(f.session.prompt).toHaveBeenCalled());
+  expect(f.loaderOptions[0]).toMatchObject({cwd:'/borrowed',extensionFactories:['builtin:mcp','builtin:codemode','builtin:tool-search',reportFactory]});
+  expect(f.applyOverrides).toHaveBeenCalledWith({defaultTools:['read','bash','board','dag_report']});
+  expect(f.store.state.worktree[id]).toBe(f.store.config.noWorktree);
+  f.finish(); await f.runtime.wait('dag-worker');
 });

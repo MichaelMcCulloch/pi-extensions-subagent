@@ -8,8 +8,8 @@
  * `Worktrees`, `MaxDepth`, `MaxGen`, and `MaxSeq` -- the parameterized
  * SubagentSystem, not the TLC fixture. `spec/SubagentSystemProof.tla` establishes
  * `Init => CoreInv` and that each action preserves each CoreInv component; `PTL`
- * turns that into `[]CoreInv`. CoreInv is the machine safety core; the recursive
- * view invariants (`CancelCascade`, the presentation laws) are TLC-checked.
+ * turns that into `[]CoreInv`. SubagentViewProof additionally establishes the
+ * ancestor, cancellation and presentation views, assembled by SafetyViews.
  *
  * The driver locates tlapm from `TLAPM`, then `~/.local/tlapm/bin/tlapm`,
  * then `PATH`, and its stdlib from `TLAPM_LIBRARY`, then the sibling lib

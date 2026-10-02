@@ -14,6 +14,7 @@ export function buildSubagentTool(getRuntime: (ctx: ExtensionContext) => Subagen
     namespace: { name: "subagents", description: "Attenuated child-agent lifecycles" },
     name:'subagent',label:'Subagent',description:'Dispatch a named background child using your model. Optionally allocate a git worktree; never merges. Authority defaults to no spawning. Use wait for blocking, cancel to stop, cleanup for settled clean worktrees, and clear to forget.',
     parameters:SubagentParams,executionMode:'sequential',
+    outputSchema:Type.Object({action:Type.String(),result:Type.String(),agents:Type.Array(Type.Object({id:Type.String(),name:Type.String(),generation:Type.Integer(),sequence:Type.Integer(),status:Type.String(),terminal:Type.String(),authority:Type.Object({spawn:Type.Boolean(),grant:Type.Boolean()}),worktreeState:Type.String()}))}),
     async execute(_id, params, signal, _update, ctx) {
       const runtime = getRuntime(ctx); let detail = '';
       if (params.action !== 'list' && params.action !== 'status' && !params.name) throw new SubagentStateError('subagent-missing-name','name is required');
@@ -33,7 +34,9 @@ export function buildSubagentTool(getRuntime: (ctx: ExtensionContext) => Subagen
         case 'list': break;
       }
       const text = [renderSubagents(runtime.store.state),detail].filter(Boolean).join('\n\n');
-      return {content:[{type:'text',text}],details:{action:params.action}};
+      const s=runtime.store.state;
+      const agents=runtime.visibleAgents().map(id=>({id,name:s.name[id],generation:s.gen[id],sequence:s.seq[id],status:s.status[id],terminal:s.terminal[id],authority:s.authority[id],worktreeState:s.wtState[id]}));
+      return {content:[{type:'text',text}],details:{action:params.action},structuredContent:JSON.parse(JSON.stringify({action:params.action,result:detail,agents}))};
     },
   };
 }

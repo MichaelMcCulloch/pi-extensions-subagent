@@ -132,9 +132,10 @@ for (const [name, title, actionDefs] of CASES) {
   theorem(name, `${title} => CoreInv'`, `BY ${COMPONENTS.map(c => `${name}_${c}`).join(", ")} DEF CoreInv`);
   finish(`Subagent${name}Proof`);
 }
-lines = ["---------------- MODULE SubagentSystemProof ----------------", "\\* Generated; the driver checks every imported proof module before this assembly.", `EXTENDS ${modules.join(", ")}`, ""];
+lines = ["---------------- MODULE SubagentSystemProof ----------------", "\\* Generated; the driver checks every imported proof module before this assembly.", `EXTENDS ${modules.join(", ")}, SubagentViewProof`, ""];
 theorem("NextCore", "CoreInv /\\ [Next]_vars => CoreInv'", `BY ${CASES.map(c => c[0]).join(", ")} DEF Next, vars`);
 theorem("SafetyCore", "SafetySpec => []CoreInv", "BY InitCore, NextCore, PTL DEF SafetySpec");
+theorem("SafetyViews", "SafetySpec => [](ViewInv /\\ LiveAncestorsRunning)", "BY SafetyCore, CoreImpliesViews, PTL");
 push("=========================================================================");
 push();
 const output = process.argv[2] ?? "spec/SubagentSystemProof.tla";

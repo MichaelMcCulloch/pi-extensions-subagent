@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
-import type { AgentSession, ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { AgentSession, ExtensionAPI, ExtensionContext, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { attenuates, descendants, guards, live, SubagentStateError, type Authority } from '../formal/model.ts';
 import { ensureWorktree, probeRepository, probeWorktree, removeWorktree, sanitize, subagentBranch, worktreeRoot } from '../engine/git.ts';
 import { SubagentStore } from './store.ts';
@@ -22,7 +22,8 @@ const globalRegistry = globalThis as typeof globalThis & { [symbol]?: Registry }
 const registry = globalRegistry[symbol] ??= {authority:new Map(),binding:new Map()};
 export const authorityBySessionId = registry.authority;
 export const bindingBySessionId = registry.binding;
-interface Child { done: Promise<void>; session?: AgentSession; cancelled: boolean; gen: number }
+export interface BorrowedWorkspace { cwd: string; extensionFactories?: ExtensionFactory[]; activeTools?: string[] }
+interface Child { done: Promise<void>; session?: AgentSession; cancelled: boolean; gen: number; borrowed?: BorrowedWorkspace }
 export interface DispatchInput { name: string; task: string; worktree?: boolean; spawn?: boolean; grant?: boolean }
 export class SubagentRuntime {
   private children = new Map<string, Child>();
@@ -34,9 +35,10 @@ export class SubagentRuntime {
     const c = scope.find(a => s.name[a] === name && s.status[a] !== 'absent');
     if (!c) throw new SubagentStateError('subagent-not-found',name); return c;
   }
-  dispatch(input: DispatchInput): string {
+  dispatch(input: DispatchInput, borrowed?: BorrowedWorkspace): string {
     if (this.closed) throw new SubagentStateError('subagent-session-closed','dispatcher stopped');
     if (!input.name.trim() || !input.task.trim()) throw new SubagentStateError('subagent-invalid-dispatch','name and task are required');
+    if (borrowed && input.worktree) throw new SubagentStateError('subagent-worktree-ownership','a borrowed worktree cannot also be owned by the child');
     const ctx = this.context();
     if (!ctx.model) throw new SubagentStateError('subagent-no-model','dispatcher has no model');
     const s = this.store.state; const m = this.store.config;
@@ -49,7 +51,7 @@ export class SubagentRuntime {
     const branch = repo ? subagentBranch(generation,input.name) : null;
     const path = repo ? resolve(worktreeRoot(repo.repo),sanitize(generation),sanitize(input.name)) : null;
     this.store.apply({event:{type:'Dispatch',d:this.agent,c,n:input.name,w:path ?? m.noWorktree,auth},payload:{task:input.task,path,branch,head:repo?.head ?? null}});
-    const child: Child = {done:Promise.resolve(),cancelled:false,gen:this.store.state.gen[c]!};
+    const child: Child = {done:Promise.resolve(),cancelled:false,gen:this.store.state.gen[c]!,...(borrowed ? {borrowed} : {})};
     this.children.set(c,child);
     // Defer all asynchronous setup; dispatch returns the recorded intent immediately.
     child.done = Promise.resolve().then(() => this.run(c,child,ctx,auth,repo));
@@ -68,11 +70,11 @@ export class SubagentRuntime {
       }
       const sdk = await this.sdk();
       if (child.cancelled) return;
-      const cwd = payload.path ?? ctx.cwd; const agentDir = sdk.getAgentDir();
+      const cwd = payload.path ?? child.borrowed?.cwd ?? ctx.cwd; const agentDir = sdk.getAgentDir();
       const settingsManager = sdk.SettingsManager.create(cwd,agentDir);
-      settingsManager.applyOverrides({defaultTools:this.pi.getActiveTools().filter(t => t !== 'subagent' || auth.spawn)});
+      settingsManager.applyOverrides({defaultTools:[...new Set([...this.pi.getActiveTools().filter(t => t !== 'subagent' || auth.spawn),...(child.borrowed?.activeTools ?? [])])]});
       const standalone = resolve(dirname(fileURLToPath(import.meta.url)),'../index.ts');
-      const resourceLoader = new sdk.DefaultResourceLoader({cwd,agentDir,settingsManager,noExtensions:this.extensionPath !== standalone,additionalExtensionPaths:[this.extensionPath],extensionFactories:[sdk.createMcpExtension(),sdk.createCodemodeExtension({mode:'on'}),sdk.createToolSearchExtension()]});
+      const resourceLoader = new sdk.DefaultResourceLoader({cwd,agentDir,settingsManager,noExtensions:this.extensionPath !== standalone,additionalExtensionPaths:[this.extensionPath],extensionFactories:[sdk.createMcpExtension(),sdk.createCodemodeExtension({mode:'on'}),sdk.createToolSearchExtension(),...(child.borrowed?.extensionFactories ?? [])]});
       await resourceLoader.reload();
       const sessionManager = sdk.SessionManager.inMemory(cwd);
       id = sessionManager.getSessionId();

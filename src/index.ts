@@ -21,7 +21,7 @@ export function latestSnapshot(ctx: ExtensionContext): SubagentState | null {
 }
 
 /** Default export consumed by pi. */
-export default function subagentExtension(pi: ExtensionAPI, options: { extensionPath?: string } = {}): void {
+export default function subagentExtension(pi: ExtensionAPI, options: { extensionPath?: string; ready?: (runtime: SubagentRuntime | undefined) => void } = {}): void {
   let runtime: SubagentRuntime | undefined; let context: ExtensionContext | undefined;
   let widgetTui: TUI | null = null; let widgetInstalled = false;
   let detachPersistence: () => void = () => {};
@@ -63,6 +63,7 @@ export default function subagentExtension(pi: ExtensionAPI, options: { extension
     // The host has already selected the destination branch. Do not append
     // shutdown snapshots from the old tree onto that branch.
     detachPersistence();
+    options.ready?.(undefined);
     hideWidget();
     await runtime?.shutdown(); context = ctx;
     let attached = true;
@@ -71,6 +72,7 @@ export default function subagentExtension(pi: ExtensionAPI, options: { extension
     const authority = authorityBySessionId.get(id) ?? {spawn:true,grant:true};
     const store = binding?.store ?? new SubagentStore({append:state => {if (attached) {pi.appendEntry(SUBAGENT_STATE_ENTRY,state); refreshWidget();}}},snapshot ?? initSubagentState());
     runtime = new SubagentRuntime(store,binding?.agent ?? store.config.root,pi,() => context!,undefined,options.extensionPath);
+    options.ready?.(runtime);
     if (!binding) store.recover();
     pi.setActiveTools(authority.spawn ? [...new Set([...pi.getActiveTools(),'subagent'])] : pi.getActiveTools().filter(t => t !== 'subagent'));
     refreshWidget();
@@ -78,7 +80,7 @@ export default function subagentExtension(pi: ExtensionAPI, options: { extension
 
   pi.on('session_start',async (_event,ctx) => setup(ctx));
   pi.on('session_tree',async (_event,ctx) => setup(ctx));
-  pi.on('session_shutdown',async () => {await runtime?.shutdown(); hideWidget(); runtime = undefined; context = undefined;});
+  pi.on('session_shutdown',async () => {options.ready?.(undefined); await runtime?.shutdown(); hideWidget(); runtime = undefined; context = undefined;});
   pi.registerTool(buildSubagentTool(ctx => {context = ctx; if (!runtime) throw new Error('subagent-session-not-started'); return runtime;}));
   pi.registerCommand('subagent',{description:'Inspect the subagent tree',handler:async (_args,ctx) => {
     if (!runtime) return;
