@@ -22,7 +22,7 @@ const globalRegistry = globalThis as typeof globalThis & { [symbol]?: Registry }
 const registry = globalRegistry[symbol] ??= {authority:new Map(),binding:new Map()};
 export const authorityBySessionId = registry.authority;
 export const bindingBySessionId = registry.binding;
-export interface BorrowedWorkspace { cwd: string; extensionFactories?: ExtensionFactory[]; activeTools?: string[] }
+export interface BorrowedWorkspace { cwd: string; notify?: boolean; extensionFactories?: ExtensionFactory[]; activeTools?: string[] }
 interface Child { done: Promise<void>; session?: AgentSession; cancelled: boolean; gen: number; borrowed?: BorrowedWorkspace }
 export interface DispatchInput { name: string; task: string; worktree?: boolean; spawn?: boolean; grant?: boolean }
 export class SubagentRuntime {
@@ -107,7 +107,7 @@ export class SubagentRuntime {
         // Setup failures have no admitted effect; Cancel is the specified transition.
         const type = child.cancelled || s.status[c] === 'dispatched' ? 'Cancel' : failed ? 'Fail' : 'Complete';
         this.store.apply({event:{type,c},payload:{result}});
-        if (!this.closed) this.pi.sendMessage({customType:'subagent/result',content:`Subagent ${s.name[c]}: ${this.store.state.terminal[c]}\n${result}`,display:true,details:{agent:c,generation:child.gen}}, {triggerTurn:true});
+        if (!this.closed && child.borrowed?.notify !== false) this.pi.sendMessage({customType:'subagent/result',content:`Subagent ${s.name[c]}: ${this.store.state.terminal[c]}\n${result}`,display:true,details:{agent:c,generation:child.gen}}, {triggerTurn:true});
       }
       this.children.delete(c);
     }

@@ -100,3 +100,11 @@ it('borrows a DAG workspace and report tool without claiming owned-worktree clea
   expect(f.store.state.worktree[id]).toBe(f.store.config.noWorktree);
   f.finish(); await f.runtime.wait('dag-worker');
 });
+
+it('lets an owning coordinator suppress child completion interrupts',async()=>{
+  const f=fixture();
+  const id=f.runtime.dispatch({name:'quiet-worker',task:'work'},{cwd:'/borrowed',notify:false});
+  f.finish();await f.runtime.wait('quiet-worker');
+  expect(f.store.state.terminal[id]).toBe('completed');
+  expect(f.pi.sendMessage).not.toHaveBeenCalled();
+});
